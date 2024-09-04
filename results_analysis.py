@@ -77,24 +77,24 @@ def main(high_res_folder, super_res_folder):
     mse_values = []
     for i in range(len(high_res_images)):
         resized_high_res_image = cv2.resize(high_res_images[i], (super_res_images[i].shape[1], super_res_images[i].shape[0]), interpolation=cv2.INTER_AREA)
-        # psnr = calculate_psnr(resized_high_res_image, super_res_images[i])
-        # psnr_values.append(psnr)
+        psnr = calculate_psnr(resized_high_res_image, super_res_images[i])
+        psnr_values.append(psnr)
         ssim_val = calculate_ssim(resized_high_res_image, super_res_images[i])
         ssim_values.append(ssim_val)
-        # mse = calculate_mse(resized_high_res_image, super_res_images[i])
-        # mse_values.append(mse)
-        # print(f"MSE: {mse:.2f}")
-        # print(f"SSIM: {ssim:.4f}")
-        # print(f"PSNR for image {i+1}: {psnr:.2f} dB")
+        mse = calculate_mse(resized_high_res_image, super_res_images[i])
+        mse_values.append(mse)
+        print(f"MSE: {mse:.2f}")
+        print(f"SSIM: {ssim:.4f}")
+        print(f"PSNR for image {i+1}: {psnr:.2f} dB")
     
-    #average_psnr = np.mean(psnr_values)
-    #print(f"Average PSNR: {average_psnr:.2f} dB")
+    average_psnr = np.mean(psnr_values)
+    print(f"Average PSNR: {average_psnr:.2f} dB")
     average_ssim = np.mean(ssim_values)
-    # #print(f"Average SSIM: {average_ssim:.2f}")
-    # average_mse = np.mean(mse_values)
-    #print(f"Average MSE: {average_mse:.2f}")
-    #res_df = pd.DataFrame(data={'data_type': [super_res_folder.split('/')[-1]], 'psnr': [average_psnr], 
-     #                           'ssim': [average_ssim], 'mse': [average_mse]})
+    print(f"Average SSIM: {average_ssim:.2f}")
+    average_mse = np.mean(mse_values)
+    print(f"Average MSE: {average_mse:.2f}")
+    res_df = pd.DataFrame(data={'data_type': [super_res_folder.split('/')[-1]], 'psnr': [average_psnr], 
+                                'ssim': [average_ssim], 'mse': [average_mse]})
     res_df = pd.DataFrame(data={'data_type': [super_res_folder.split('/')[-1]], 'ssim': [average_ssim]})
     return res_df
 
