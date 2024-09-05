@@ -29,4 +29,4 @@ $ python test.py
 ```
 The SR images will be created in folder "Result"
 
-![our poster!](./images/poster_deep_learning.png)
+![our poster!](./poster_deep_learning.png)
