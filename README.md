@@ -29,4 +29,5 @@ $ python test.py
 ```
 The SR images will be created in folder "Result"
 
+# Our poster
 ![our poster!](./poster_deep_learning.png)
