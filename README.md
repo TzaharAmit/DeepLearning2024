@@ -25,7 +25,7 @@ the link in the Dataset section
 train the model on the original dataset
 ## 3. Finetune
 use the saved model from the training 
-finetune the model using the DIV2K model
+and finetune the model using the DIV2K model
 
 # Unsupervised Generative Approach:
 ## 1. Download pre-trained models 
