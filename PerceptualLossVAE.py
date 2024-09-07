@@ -1,20 +1,20 @@
 import os
-
+import gdown
+import zipfile
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from PIL import ImageFilter
+from PIL import Image, ImageFilter
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms, models
 from torchvision.datasets import OxfordIIITPet
 from torchvision.transforms import functional as TF
 from torchvision.utils import save_image
 from skimage.metrics import structural_similarity as compare_ssim
-
 
 class BlurAndDownsample(nn.Module):
     def __init__(self, sigma=1.0, scale_factor=2):
@@ -38,9 +38,8 @@ class BlurAndDownsample(nn.Module):
         img = self.gaussian_blur(img)
         img = self.downsample(img)
         return img
-
-
-def prepare_datasets(image_size=128, batch_size=32, scale_factor=2, test_split=0.2, limit_dataset_size=50000):
+    
+def prepare_datasets(image_size=128, batch_size=32, scale_factor=2, test_split=0.2):
     # High-Resolution Transform
     hr_transform = transforms.Compose([
         transforms.Resize((image_size, image_size)),
@@ -70,12 +69,79 @@ def prepare_datasets(image_size=128, batch_size=32, scale_factor=2, test_split=0
     train_size = total_size - test_size
     train_dataset, test_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size])
 
-    limited_train_size = min(limit_dataset_size, train_size)
-    limited_test_size = min(limit_dataset_size, test_size)
+    limited_train_size = train_size
+    limited_test_size = test_size
 
     train_dataset, _ = torch.utils.data.random_split(train_dataset,
                                                      [limited_train_size, train_size - limited_train_size])
     test_dataset, _ = torch.utils.data.random_split(test_dataset, [limited_test_size, test_size - limited_test_size])
+
+    def lr_hr_transform(data):
+        hr_image = hr_transform(data)
+        lr_image = lr_transform(data)
+        return lr_image, hr_image
+    
+    # Update dataset classes to use custom transform
+    train_dataset = TransformDataset(train_dataset, lr_hr_transform)
+    test_dataset = TransformDataset(test_dataset, lr_hr_transform)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    return train_loader, test_loader
+
+class DIV2KDataset(Dataset):
+    def __init__(self, root_dir, hr_transform=None, lr_transform=None):
+        self.root_dir = root_dir
+        self.hr_transform = hr_transform
+        self.lr_transform = lr_transform
+        self.image_filenames = [f for f in os.listdir(root_dir) if f.endswith('.png')]
+
+    def __len__(self):
+        return len(self.image_filenames)
+
+    def __getitem__(self, idx):
+        img_name = os.path.join(self.root_dir, self.image_filenames[idx])
+        hr_image = Image.open(img_name).convert('RGB')  # Load as PIL image
+
+        if self.hr_transform:
+            hr_image = self.hr_transform(hr_image)
+
+        lr_image = hr_image.copy()  # Create a copy of the HR image for LR transformation
+        if self.lr_transform:
+            lr_image = self.lr_transform(lr_image)
+
+        return lr_image, hr_image
+
+
+# Update the data preparation function for DIV2K
+def prepare_datasets_div2k(image_size=128, batch_size=32, scale_factor=2, test_split=0.2, limit_dataset_size=None):
+    # High-Resolution Transform
+    hr_transform = transforms.Compose([
+        transforms.Resize((image_size, image_size)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+    # Low-Resolution Transform
+    lr_transform = transforms.Compose([
+        transforms.Resize((image_size * scale_factor, image_size * scale_factor)),  # Resize for downsampling
+        BlurAndDownsample(sigma=1.0, scale_factor=scale_factor),
+        transforms.Resize((image_size, image_size)),  # Resize back to desired LR size
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+    dataset_dir = '/content/drive/MyDrive/DIV2K_train_HR'  # Path to the extracted DIV2K dataset
+    full_dataset = DIV2KDataset(root_dir=dataset_dir)
+
+    total_size = len(full_dataset)
+    test_size = int(total_size * test_split)
+    train_size = total_size - test_size
+    train_dataset, test_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size])
+
+    if limit_dataset_size:
+        train_dataset, _ = torch.utils.data.random_split(train_dataset, [limit_dataset_size, train_size - limit_dataset_size])
+        test_dataset, _ = torch.utils.data.random_split(test_dataset, [limit_dataset_size, test_size - limit_dataset_size])
 
     def lr_hr_transform(data):
         hr_image = hr_transform(data)
@@ -90,6 +156,17 @@ def prepare_datasets(image_size=128, batch_size=32, scale_factor=2, test_split=0
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     return train_loader, test_loader
 
+class TransformDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset, transform):
+        self.dataset = dataset
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        data = self.dataset[idx][0]
+        return self.transform(data)
 
 class TransformDataset(torch.utils.data.Dataset):
     def __init__(self, dataset, transform):
@@ -103,9 +180,7 @@ class TransformDataset(torch.utils.data.Dataset):
         data = self.dataset[idx][0]
         return self.transform(data)
 
-
 train_loader, test_loader = prepare_datasets()
-
 
 class VAE(nn.Module):
     def __init__(self):
@@ -169,7 +244,7 @@ perceptual_loss_fn = PerceptualLoss().to(device)
 
 
 def save_tensor_images(images, epoch, batch):
-    output_dir = 'outputs'
+    output_dir = './outputs'
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -181,8 +256,8 @@ def save_tensor_images(images, epoch, batch):
 
 
 def denormalize(tensor):
-    mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-    std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+    mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).to(device)
+    std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).to(device)
     return tensor * std + mean
 
 
@@ -199,7 +274,7 @@ if not os.path.exists(models_dir):
     os.makedirs(models_dir)
 
 
-epochs = 100
+epochs = 250
 
 
 def train_and_validate(model, train_loader, test_loader, epochs):
@@ -227,8 +302,27 @@ def train_and_validate(model, train_loader, test_loader, epochs):
                 compare_images = torch.cat([hr_images[:4], sr_images[:4]])
                 save_tensor_images(compare_images, epoch, i)  # Save images to disk
 
+        # # Validation
+        # model.eval()
+        # with torch.no_grad():
+        #     total_loss = 0
+        #     count = 0
+        #     for lr_images, hr_images in test_loader:
+        #         lr_images, hr_images = lr_images.to(device), hr_images.to(device)
+        #
+        #         reconstruction, mu, logvar = model(lr_images)
+        #
+        #         # Calculate losses
+        #         recon_loss = loss_function(reconstruction, hr_images, mu, logvar)
+        #         perceptual_loss = perceptual_loss_fn(reconstruction, hr_images)
+        #         loss = recon_loss + 50 * perceptual_loss
+        #         total_loss += loss.item()
+        #         count += 1
+        #     avg_loss = total_loss / count
+        #     print(f"Epoch: {epoch}, Validation Loss: {avg_loss}")
+
         # Save the model
-        torch.save(model.state_dict(), f'models/vae_epoch_{epoch + 1}.pth')
+        torch.save(model.state_dict(), f'./models/vae_epoch_{epoch + 1}.pth')
 
 
 def test(model, dataloader):
@@ -246,9 +340,9 @@ def compare_images(original, reconstructed):
         reconstructed = TF.resize(reconstructed, original.shape[-2:])
     figure, ax = plt.subplots(2, 10, figsize=(20, 4))
     for i in range(10):
-        ax[0, i].imshow(original[i].permute(1, 2, 0).numpy() * 0.5 + 0.5)
+        ax[0, i].imshow(original[i].cpu().permute(1, 2, 0).numpy() * 0.5 + 0.5)
         ax[0, i].axis('off')
-        ax[1, i].imshow(reconstructed[i].permute(1, 2, 0).numpy() * 0.5 + 0.5)
+        ax[1, i].imshow(reconstructed[i].cpu().permute(1, 2, 0).numpy() * 0.5 + 0.5)
         ax[1, i].axis('off')
     plt.show()
 
@@ -288,15 +382,23 @@ def calculate_ssim(model, dataloader):
 train_and_validate(model, train_loader, test_loader, epochs)
 test(model, test_loader)
 
-
 def load_model(model_path):
     model = VAE()
     model.load_state_dict(torch.load(model_path))
+    model.to(device) # Move the loaded model to the same device as the input data
     return model
 
-
-model_path = f"models/vae_epoch_{epochs}.pth"
+model_path = f"./models/vae_epoch_{epochs}.pth"
 model = load_model(model_path)
 
+calculate_psnr(model, test_loader)
+calculate_ssim(model, test_loader)
+
+# Load DIV2K dataset
+train_loader, test_loader = prepare_datasets_div2k()
+
+# train_and_validate(model, train_loader, test_loader, epochs)
+train_and_validate(model, train_loader, test_loader)
+test(model, test_loader)
 calculate_psnr(model, test_loader)
 calculate_ssim(model, test_loader)
