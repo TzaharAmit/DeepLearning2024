@@ -15,19 +15,27 @@ Ravit Shagan Damti
     pytorch-gan-metrics
 
 
-# Implementation
-# Perceptual Loss Approach:
+# Implementation: Perceptual Loss Approach:
 
 
 
 # Unsupervised Generative Approach:
-## 1. Test
+## 1. Download pre-trained models 
+use this link to download the models:
+https://drive.google.com/open?id=1SUZGE04vw5_yDYiw6PJ4sbHAOIEV6TJ7
+copy them to the folder - models
+## 2. Test
 ---------------------------------------
-1. Copy the test images to folder "Test" and run 
+Create a folder named "Test" and "Result" and copy the test images to Test.
+run: 
 ```sh
 $ python test.py
 ```
-The SR images will be created in folder "Result"
+The SR images will be created in the folder "Result"
+# Dataset
+The dataset chosen for this project is DIV2K
+It can be downloaded from here
+https://data.vision.ee.ethz.ch/cvl/DIV2K/
 
 # Our poster
 ![our poster!](./poster_deep_learning.png)
