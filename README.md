@@ -16,8 +16,16 @@ Ravit Shagan Damti
 
 
 # Implementation: Perceptual Loss Approach:
-
-
+the original code is in the following link:
+https://github.com/nujitha99/PerceptualLossVAE/tree/main
+## 1. Download the dataset
+download the desired photos from the DIV2K dataset
+the link in the Dataset section
+## 2. Train
+train the model on the original dataset
+## 3. Finetune
+use the saved model from the training 
+finetune the model using the DIV2K model
 
 # Unsupervised Generative Approach:
 ## 1. Download pre-trained models 
